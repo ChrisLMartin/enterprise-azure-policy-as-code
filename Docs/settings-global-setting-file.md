@@ -121,7 +121,7 @@ EPAC has a concept of an environment identified by a string (unique per reposito
 |-----------|-------------|
 | `globalNotScopes` | See [Excluding scopes for all Assignments with `globalNotScopes`](#excluding-scopes-for-all-assignments-with-globalnotscopes) |
 | `skipResourceValidationForExemptions` | Disables checking the resource existence for Policy Exemptions. Default is false. This can be useful if you have a massive amount of exemptions and the validation is taking too long. |
-| `filterRoleAssignmentsByEffect` | Reduces the role assignments created for Policy Set assignments. Default is true. See [Reducing role assignments with `filterRoleAssignmentsByEffect`](#reducing-role-assignments-with-filterroleassignmentsbyeffect). |
+| `filterRoleAssignmentsByEffect` | Reduces the role assignments, and Managed Identities, created for assignments which evaluate with a non-deploying effect. Default is true. See [Reducing role assignments with `filterRoleAssignmentsByEffect`](#reducing-role-assignments-with-filterroleassignmentsbyeffect). |
 | `deployedBy` | Populates the `metadata` fields. It defaults to `epac/$pacOwnerId/$pacSelector`. We recommend to use the default. |
 | `managedTenantId` | Used when the `pacEnvironment` is in a lighthouse managed tenant. |
 | `defaultContext` | In rare cases (typically only when deploying to a lighthouse managed tenant) the default context (Get-azContext) of a user/SPN running a plan will be set to a subscription where that user/SPN does not have sufficient privileges. Some checks have been built in so that in some cases when this happens EPAC is able to fix the context issue. When it is not, a `defaultContext` subscription name must be provided. This can be any subscription within the `deploymentRootScope`. |
@@ -164,11 +164,24 @@ A hard-coded effect is only a default. An assignment may use an [override](polic
 - another member which is not hard-coded contributes the same role, or
 - the assignment has a deploying `policyEffect` override which cannot be attributed to specific `policyDefinitionReferenceId` values.
 
-The setting is deliberately narrow. It does not change:
+The setting does not change:
 
-- **Assignments of a single Policy.** Only Policy Set assignments are filtered, so a `DeployIfNotExists` or `Modify` Policy assigned on its own always keeps every role its definition declares, even if the assignment overrides it to `Disabled`.
 - **Policy Sets which do not hard-code effects.** When a member takes its effect from its own definition default or from a Policy Set parameter, it is not hard-coded and its roles are always kept.
 - **`additionalRoleAssignments`.** These are read from the Policy Assignment file and appended after the Policy derived roles are calculated. They never pass through the filter, so they are granted in full at the scope you specify. This is what makes them a reliable way to add back a role the filter removes.
+
+#### Assignments of a single Policy
+
+A `DeployIfNotExists` or `Modify` Policy is often assigned twice: once with its effect parameter set to `AuditIfNotExists` for reporting, and once with the deploying effect. The reporting assignment can never use the roles its definition declares, so EPAC resolves the effect the assignment evaluates with, in the order Azure applies it:
+
+1. a `policyEffect` override in the assignment
+2. the effect parameter value in the assignment
+3. the effect parameter `defaultValue`, or the literal effect in the Policy definition
+
+When that resolves to one of the non-deploying literals listed above, the roles are omitted. Anything else keeps every role. When the assignment pins `definitionVersion` and the effect comes from the definition itself (step 3), the roles are kept, since the latest definition EPAC reads may not match the deployed version.
+
+#### Assignments left with no roles
+
+When filtering removes every role from an assignment, of a Policy or a Policy Set, and the assignment has no `additionalRoleAssignments`, EPAC no longer creates a Managed Identity for it. EPAC handles a change in whether an assignment needs an identity by replacing the assignment. The same happens when you later change its effect to `DeployIfNotExists` or `Modify`: the assignment is replaced again and a new identity is created and granted the roles.
 
 #### Assignments which pin `definitionVersion`
 
