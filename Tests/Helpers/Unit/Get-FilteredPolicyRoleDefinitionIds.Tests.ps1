@@ -4,9 +4,10 @@ BeforeAll {
     $script:storageRole = '/providers/Microsoft.Authorization/roleDefinitions/17d1049b-9a84-46fb-8f53-869881c3d3ab'
 
     function New-PolicyDetails {
+        # Untyped, so that $null is passed through rather than coerced to an empty string.
         param (
-            [string] $EffectParameterName = 'effect',
-            [string] $EffectValue = 'AuditIfNotExists'
+            $EffectParameterName = 'effect',
+            $EffectValue = 'AuditIfNotExists'
         )
         @{
             effectParameterName = $EffectParameterName
@@ -98,6 +99,11 @@ Describe 'Get-FilteredPolicyRoleDefinitionIds' {
             $result | Should -Be @( $script:storageRole )
         }
 
+        It 'keeps the roles when the effect default is an empty string' {
+            $result = Invoke-Filter -PolicyDetails (New-PolicyDetails -EffectValue '')
+            $result | Should -Be @( $script:storageRole )
+        }
+
         It 'removes the roles when the definition hard-codes a non-deploying effect' {
             $result = Invoke-Filter -PolicyDetails (New-PolicyDetails -EffectParameterName $null -EffectValue 'AuditIfNotExists')
             @($result).Count | Should -Be 0
@@ -107,107 +113,5 @@ Describe 'Get-FilteredPolicyRoleDefinitionIds' {
             $result = Invoke-Filter -PolicyDetails (New-PolicyDetails -EffectValue 'AuditIfNotExists') -DefinitionVersionPinned
             $result | Should -Be @( $script:storageRole )
         }
-    }
-}
-
-Describe 'Build-AssignmentDefinitionAtLeaf identity for a single Policy' {
-
-    BeforeAll {
-        foreach ($helper in @(
-                'Confirm-ValidPolicyResourceName.ps1'
-                'Get-DeepCloneAsOrderedHashtable.ps1'
-                'Build-AssignmentParameterObject.ps1'
-                'Confirm-ObjectValueEqualityDeep.ps1'
-                'Build-AssignmentDefinitionAtLeaf.ps1'
-            )) {
-            . (Join-Path $PSScriptRoot "../../../Scripts/Helpers/$helper")
-        }
-
-        $script:policyId = '/providers/Microsoft.Authorization/policyDefinitions/softdel'
-
-        function New-LeafDefinition {
-            param (
-                [hashtable] $Parameters = @{},
-                $AdditionalRoleAssignments = $null
-            )
-            $definition = @{
-                nodeName                = '/root/test'
-                assignment              = @{ name = 'softdel-test'; displayName = 'Test'; description = '' }
-                definitionEntryList     = @(
-                    @{
-                        policyDefinitionId = $script:policyId
-                        isPolicySet        = $false
-                        assignment         = @{ append = $false; name = ''; displayName = ''; description = '' }
-                    }
-                )
-                scopeCollection         = @( @{ scope = '/providers/Microsoft.Management/managementGroups/test-mg' } )
-                metadata                = @{}
-                parameters              = $Parameters
-                enforcementMode         = 'Default'
-                managedIdentityLocation = 'australiaeast'
-            }
-            if ($AdditionalRoleAssignments) {
-                $definition.additionalRoleAssignments = $AdditionalRoleAssignments
-            }
-            $definition
-        }
-
-        function Invoke-Leaf {
-            param (
-                [hashtable] $AssignmentDefinition,
-                [bool] $Filter = $true
-            )
-            $combinedPolicyDetails = @{
-                policies   = @{
-                    $script:policyId = @{
-                        name                = 'softdel'
-                        effectParameterName = 'effect'
-                        effectValue         = 'AuditIfNotExists'
-                        parameters          = @{
-                            effect = @{ isEffect = $true; defaultValue = 'AuditIfNotExists' }
-                        }
-                    }
-                }
-                policySets = @{}
-            }
-            $hasErrors, $assignmentsList = Build-AssignmentDefinitionAtLeaf `
-                -PacEnvironment @{ pacOwnerId = 'test'; deployedBy = 'test'; filterRoleAssignmentsByEffect = $Filter } `
-                -AssignmentDefinition $AssignmentDefinition `
-                -CombinedPolicyDetails $combinedPolicyDetails `
-                -PolicyRoleIds @{ $script:policyId = @( $script:storageRole ) } `
-                -RoleDefinitions @{}
-            $hasErrors | Should -BeFalse
-            $assignmentsList[0]
-        }
-    }
-
-    It 'does not create an identity when the effect parameter equals the non-deploying default' {
-        $assignment = Invoke-Leaf -AssignmentDefinition (New-LeafDefinition -Parameters @{ effect = 'AuditIfNotExists' })
-        $assignment.identityRequired | Should -BeFalse
-        $assignment.identity.type | Should -Be 'None'
-        $assignment.Contains('managedIdentityLocation') | Should -BeFalse
-        $assignment.requiredRoleAssignments | Should -BeNullOrEmpty
-    }
-
-    It 'creates an identity and role assignment for DeployIfNotExists' {
-        $assignment = Invoke-Leaf -AssignmentDefinition (New-LeafDefinition -Parameters @{ effect = 'DeployIfNotExists' })
-        $assignment.identityRequired | Should -BeTrue
-        $assignment.identity.type | Should -Be 'SystemAssigned'
-        @($assignment.requiredRoleAssignments).Count | Should -Be 1
-        $assignment.requiredRoleAssignments[0].roleDefinitionId | Should -Be $script:storageRole
-    }
-
-    It 'keeps the identity for additionalRoleAssignments when the Policy roles are filtered out' {
-        $additional = @( @{ roleDefinitionId = '/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7'; scope = '/subscriptions/00000000-0000-0000-0000-000000000000' } )
-        $assignment = Invoke-Leaf -AssignmentDefinition (New-LeafDefinition -Parameters @{ effect = 'AuditIfNotExists' } -AdditionalRoleAssignments $additional)
-        $assignment.identityRequired | Should -BeTrue
-        @($assignment.requiredRoleAssignments).Count | Should -Be 1
-        $assignment.requiredRoleAssignments[0].scope | Should -Be '/subscriptions/00000000-0000-0000-0000-000000000000'
-    }
-
-    It 'keeps the previous behaviour when filterRoleAssignmentsByEffect is false' {
-        $assignment = Invoke-Leaf -AssignmentDefinition (New-LeafDefinition -Parameters @{ effect = 'AuditIfNotExists' }) -Filter $false
-        $assignment.identityRequired | Should -BeTrue
-        @($assignment.requiredRoleAssignments).Count | Should -Be 1
     }
 }

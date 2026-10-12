@@ -645,24 +645,14 @@ function Build-AssignmentDefinitionAtLeaf {
             # Drop the roles when this assignment evaluates the Policy with a non-deploying effect.
             # The assignment file parameters are used rather than $baseAssignment.parameters, which
             # omits a value equal to the defaultValue.
+            # The Managed Identity is kept even when no roles remain: Azure requires one on every
+            # assignment of a Modify or DeployIfNotExists definition, whatever its effect.
             $policyRoleDefinitionIds = Get-FilteredPolicyRoleDefinitionIds `
                 -PolicyDetails $policyDetails `
                 -AssignmentParameters $AssignmentDefinition.parameters `
                 -OverridesList $baseAssignment.overrides `
                 -UnfilteredRoleDefinitionIds $policyRoleDefinitionIds `
                 -DefinitionVersionPinned:([bool] $baseAssignment.definitionVersion)
-        }
-
-        if ($identityRequired -and $PacEnvironment.filterRoleAssignmentsByEffect `
-                -and $policyRoleDefinitionIds.Count -eq 0 `
-                -and $AssignmentDefinition.additionalRoleAssignments.Count -eq 0) {
-            # Every role was filtered out, so the Managed Identity would be granted nothing.
-            $identityRequired = $false
-            $baseAssignment.identityRequired = $false
-            $baseAssignment.identity = @{
-                type = "None"
-            }
-            $baseAssignment.Remove("managedIdentityLocation")
         }
 
         #endregion required roleDefinitionIds

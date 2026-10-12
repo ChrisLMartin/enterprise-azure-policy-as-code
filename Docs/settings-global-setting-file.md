@@ -121,7 +121,7 @@ EPAC has a concept of an environment identified by a string (unique per reposito
 |-----------|-------------|
 | `globalNotScopes` | See [Excluding scopes for all Assignments with `globalNotScopes`](#excluding-scopes-for-all-assignments-with-globalnotscopes) |
 | `skipResourceValidationForExemptions` | Disables checking the resource existence for Policy Exemptions. Default is false. This can be useful if you have a massive amount of exemptions and the validation is taking too long. |
-| `filterRoleAssignmentsByEffect` | Reduces the role assignments, and Managed Identities, created for assignments which evaluate with a non-deploying effect. Default is true. See [Reducing role assignments with `filterRoleAssignmentsByEffect`](#reducing-role-assignments-with-filterroleassignmentsbyeffect). |
+| `filterRoleAssignmentsByEffect` | Reduces the role assignments created for Policy and Policy Set assignments which evaluate with a non-deploying effect. Default is true. See [Reducing role assignments with `filterRoleAssignmentsByEffect`](#reducing-role-assignments-with-filterroleassignmentsbyeffect). |
 | `deployedBy` | Populates the `metadata` fields. It defaults to `epac/$pacOwnerId/$pacSelector`. We recommend to use the default. |
 | `managedTenantId` | Used when the `pacEnvironment` is in a lighthouse managed tenant. |
 | `defaultContext` | In rare cases (typically only when deploying to a lighthouse managed tenant) the default context (Get-azContext) of a user/SPN running a plan will be set to a subscription where that user/SPN does not have sufficient privileges. Some checks have been built in so that in some cases when this happens EPAC is able to fix the context issue. When it is not, a `defaultContext` subscription name must be provided. This can be any subscription within the `deploymentRootScope`. |
@@ -181,7 +181,7 @@ When that resolves to one of the non-deploying literals listed above, the roles 
 
 #### Assignments left with no roles
 
-When filtering removes every role from an assignment, of a Policy or a Policy Set, and the assignment has no `additionalRoleAssignments`, EPAC no longer creates a Managed Identity for it. EPAC handles a change in whether an assignment needs an identity by replacing the assignment. The same happens when you later change its effect to `DeployIfNotExists` or `Modify`: the assignment is replaced again and a new identity is created and granted the roles.
+When filtering removes every role from an assignment, of a Policy or a Policy Set, the assignment still has a Managed Identity. Azure requires one on every assignment of a `Modify` definition or a definition which contains a deployment, whatever effect the assignment evaluates with, and rejects the assignment without it. The identity is granted no roles, or only the `additionalRoleAssignments`. Removing roles from an existing assignment updates its role assignments; the assignment itself is not replaced.
 
 #### Assignments which pin `definitionVersion`
 
@@ -190,7 +190,7 @@ Members and hard-coded member effects change between published versions of a Pol
 This version-aware calculation applies whether or not `filterRoleAssignmentsByEffect` is enabled, so a version-pinned assignment may see its roles change even with filtering off. If the version history cannot be read - a custom Policy Set with no published versions, a cloud which does not expose the endpoint, or a pattern which matches nothing - EPAC falls back to the latest version and keeps every role.
 
 > [!WARNING]
-> This setting narrows the permissions granted to the Managed Identity. The roles it removes are contributed only by members which cannot deploy anything, so remediation is not affected, but the role assignments themselves are deleted from Azure on the next deployment of the roles plan.
+> This setting narrows the permissions granted to the Managed Identity. The roles it removes are contributed only by Policies, or Policy Set members, which evaluate with a non-deploying effect and cannot deploy anything, so remediation is not affected, but the role assignments themselves are deleted from Azure on the next deployment of the roles plan.
 >
 > Review the roles plan before deploying. Use `additionalRoleAssignments` in the Policy Assignment file to add back any role your remediation still needs.
 
