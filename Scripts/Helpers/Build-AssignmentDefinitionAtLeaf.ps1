@@ -641,7 +641,7 @@ function Build-AssignmentDefinitionAtLeaf {
                     -UnfilteredRoleDefinitionIds $policyRoleDefinitionIds
             }
         }
-        elseif ($identityRequired -and $PacEnvironment.filterRoleAssignmentsByEffect) {
+        elseif ($identityRequired -and -not $isPolicySet -and $PacEnvironment.filterRoleAssignmentsByEffect) {
             # Drop the roles when this assignment evaluates the Policy with a non-deploying effect.
             # The assignment file parameters are used rather than $baseAssignment.parameters, which
             # omits a value equal to the defaultValue.
